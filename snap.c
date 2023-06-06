@@ -175,7 +175,7 @@ int main(int argc, char *argv[])
         for (size_t x = 0; x < 400; x++)
         {
             size_t fb_offset = x + y * 400;
-            uint8_t pixel = (fbp[source_pixel] >> (7 - (fb_offset % 8))) & 0x01;
+            uint8_t pixel = (fbp[source_pixel])// >> (7 - (fb_offset % 8))) & 0x01;
             *png_row_ptr |= (pixel << (7 - (x % 8)));
 
             if ((x + 1) % 8 == 0)
