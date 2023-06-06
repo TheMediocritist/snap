@@ -1,30 +1,3 @@
-//-------------------------------------------------------------------------
-//
-// The MIT License (MIT)
-//
-// Copyright (c) 2013 Andrew Duncan
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to
-// permit persons to whom the Software is furnished to do so, subject to
-// the following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
-//-------------------------------------------------------------------------
-
 #include <errno.h>
 #include <fcntl.h>
 #include <png.h>
@@ -40,7 +13,7 @@
 int main(int argc, char *argv[])
 {
     char *program = argv[0];
-    char *fbdevice = "/dev/fb0";
+    char *fbdevice = "/dev/fb1";
     char *pngname = "fb.png";
 
     int opt = 0;
@@ -52,17 +25,14 @@ int main(int argc, char *argv[])
         switch (opt)
         {
         case 'd':
-
             fbdevice = optarg;
             break;
 
         case 'p':
-
             pngname = optarg;
             break;
 
         default:
-
             fprintf(stderr,
                     "Usage: %s [-d device] [-p pngname]\n",
                     program);
@@ -73,7 +43,7 @@ int main(int argc, char *argv[])
 
     //--------------------------------------------------------------------
 
-    int fbfd = open(fbdevice, O_RDWR);
+    int fbfd = open(fbdevice, O_RDONLY);
 
     if (fbfd == -1)
     {
@@ -84,19 +54,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    struct fb_fix_screeninfo finfo;
-
-    if (ioctl(fbfd, FBIOGET_FSCREENINFO, &finfo) == -1)
-    {
-        fprintf(stderr,
-                "%s: reading framebuffer fixed information - %s",
-                program,
-                strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
     struct fb_var_screeninfo vinfo;
-
     if (ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo) == -1)
     {
         fprintf(stderr,
@@ -106,36 +64,33 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    if ((vinfo.bits_per_pixel != 16) &&
-        (vinfo.bits_per_pixel != 24) &&
-        (vinfo.bits_per_pixel != 32))
+    if (vinfo.bits_per_pixel != 8)
     {
-        fprintf(stderr, "%s: only 16, 24 and 32 ", program);
-        fprintf(stderr, "bits per pixels supported\n");
+        fprintf(stderr, "%s: only 8 bits per pixel supported\n", program);
         exit(EXIT_FAILURE);
     }
 
-    void *memp = mmap(0,
-                      finfo.smem_len,
-                      PROT_READ | PROT_WRITE,
-                      MAP_SHARED,
-                      fbfd,
-                      0);
+    size_t framebuffer_size = vinfo.xres * vinfo.yres;
+    uint8_t *fbp = (uint8_t *)malloc(framebuffer_size);
 
+    if (fbp == NULL)
+    {
+        fprintf(stderr, "%s: failed to allocate framebuffer\n", program);
+        exit(EXIT_FAILURE);
+    }
+
+    ssize_t bytes_read = read(fbfd, fbp, framebuffer_size);
     close(fbfd);
-    fbfd = -1;
 
-    if (memp == MAP_FAILED)
+    if (bytes_read != framebuffer_size)
     {
         fprintf(stderr,
-                "%s: failed to map framebuffer device to memory - %s",
+                "%s: failed to read framebuffer - %s",
                 program,
                 strerror(errno));
+        free(fbp);
         exit(EXIT_FAILURE);
     }
-
-    uint8_t *fbp = memp;
-    memp = NULL;
 
     //--------------------------------------------------------------------
 
@@ -149,6 +104,7 @@ int main(int argc, char *argv[])
         fprintf(stderr,
                 "%s: could not allocate PNG write struct\n",
                 program);
+        free(fbp);
         exit(EXIT_FAILURE);
     }
 
@@ -159,14 +115,15 @@ int main(int argc, char *argv[])
         fprintf(stderr,
                 "%s: could not allocate PNG info struct\n",
                 program);
+        free(fbp);
         exit(EXIT_FAILURE);
     }
 
     if (setjmp(png_jmpbuf(png_ptr)))
     {
         png_destroy_write_struct(&png_ptr, &info_ptr);
-
         fprintf(stderr, "%s: error creating PNG\n", program);
+        free(fbp);
         exit(EXIT_FAILURE);
     }
 
@@ -175,6 +132,7 @@ int main(int argc, char *argv[])
     if (pngfp == NULL)
     {
         fprintf(stderr, "%s: Unable to create %s\n", program, pngname);
+        free(fbp);
         exit(EXIT_FAILURE);
     }
 
@@ -185,93 +143,49 @@ int main(int argc, char *argv[])
         info_ptr,
         vinfo.xres,
         vinfo.yres,
-        8,
-        PNG_COLOR_TYPE_RGB,
+        1,  // Bit depth of 1
+        PNG_COLOR_TYPE_GRAY,
         PNG_INTERLACE_NONE,
         PNG_COMPRESSION_TYPE_BASE,
         PNG_FILTER_TYPE_BASE);
 
     png_write_info(png_ptr, info_ptr);
 
-    png_bytep png_buffer = malloc(vinfo.xres * 3 * sizeof(png_byte));
+    png_bytep png_buffer = (png_bytep)malloc((vinfo.xres + 7) / 8 * vinfo.yres);
 
     if (png_buffer == NULL)
     {
         fprintf(stderr, "%s: Unable to allocate buffer\n", program);
+        free(fbp);
+        fclose(pngfp);
         exit(EXIT_FAILURE);
     }
 
     //--------------------------------------------------------------------
 
-    int r_mask = (1 << vinfo.red.length) - 1;
-    int g_mask = (1 << vinfo.green.length) - 1;
-    int b_mask = (1 << vinfo.blue.length) - 1;
+    size_t png_buffer_index = 0;
 
-    int bytes_per_pixel = vinfo.bits_per_pixel / 8;
-
-    int y = 0;
-
-    for (y = 0; y < vinfo.yres; y++)
+    for (size_t y = 0; y < vinfo.yres; y++)
     {
-        int x;
+        size_t x;
 
         for (x = 0; x < vinfo.xres; x++)
         {
-            int pb_offset = 3 * x;
-
-            size_t fb_offset = (vinfo.xoffset + x) * (bytes_per_pixel)
-                             + (vinfo.yoffset + y) * finfo.line_length;
-
-            uint32_t pixel = 0;
-
-            switch (vinfo.bits_per_pixel)
-            {
-            case 16:
-
-                pixel = *((uint16_t *)(fbp + fb_offset));
-                break;
-
-            case 24:
-
-                pixel += *(fbp + fb_offset);
-                pixel += *(fbp + fb_offset + 1) << 8;
-                pixel += *(fbp + fb_offset + 2) << 16;
-                break;
-
-            case 32:
-
-                pixel = *((uint32_t *)(fbp + fb_offset));
-                break;
-
-            default:
-
-                // nothing to do
-                break;
-            }
-
-            png_byte r = (pixel >> vinfo.red.offset) & r_mask;
-            png_byte g = (pixel >> vinfo.green.offset) & g_mask;
-            png_byte b = (pixel >> vinfo.blue.offset) & b_mask;
-
-            png_buffer[pb_offset] = (r * 0xFF) / r_mask;
-            png_buffer[pb_offset + 1] = (g * 0xFF)  / g_mask;
-            png_buffer[pb_offset + 2] = (b * 0xFF)  / b_mask;
+            size_t fb_offset = x + y * vinfo.xres;
+            uint8_t pixel = (fbp[fb_offset / 8] >> (7 - (fb_offset % 8))) & 0x01;
+            png_buffer[png_buffer_index / 8] |= (pixel << (7 - (png_buffer_index % 8)));
+            png_buffer_index++;
         }
-
-        png_write_row(png_ptr, png_buffer);
     }
 
     //--------------------------------------------------------------------
 
+    free(fbp);
+    png_write_image(png_ptr, &png_buffer);
     free(png_buffer);
-    png_buffer = NULL;
     png_write_end(png_ptr, NULL);
     png_destroy_write_struct(&png_ptr, &info_ptr);
     fclose(pngfp);
-
-    //--------------------------------------------------------------------
-
-    munmap(fbp, finfo.smem_len);
 
     //--------------------------------------------------------------------
 
