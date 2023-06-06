@@ -171,35 +171,41 @@ int main(int argc, char *argv[])
     uint8_t fb_chunk_bit;		// bit counter 
     uint32_t pixel_idx = 0;
     
-    // loop through pixels
-	for (fb_chunk = 0; fb_chunk < 12000; fb_chunk++)
-    {
-        // copy data chunk _from_ framebuffer 
-		memcpy(buffer_chunk, fbp + (fb_chunk * 8), 8);
-    }
-    
-    for (size_t y = 0; y < 240; y++)
-    {
-        png_bytep png_row_ptr = png_row;
-        
-        for (fb_chunk_bit = 0; fb_chunk_bit < 8; fb_chunk_bit++)
-	{
-            uint8_t oldbit = buffer_chunk[fb_chunk_bit];
+// Loop through chunks of framebuffer data
+for (fb_chunk = 0; fb_chunk < 12000; fb_chunk++)
+{
+    // Copy data chunk _from_ framebuffer
+    memcpy(buffer_chunk, fbp + (fb_chunk * 8), 8);
 
-            *png_row_ptr |= (oldbit << (7 - (pixel_idx % 8)));
+    // Loop through pixels in the chunk
+    for (fb_chunk_bit = 0; fb_chunk_bit < 8; fb_chunk_bit++)
+    {
+        uint8_t oldbit = (buffer_chunk[fb_chunk_bit] == '1') ? 1 : 0;
 
-            if ((fb_chunk + 1) % 50 == 0)
-            {
-                png_row_ptr++;
-                *png_row_ptr = 0;
-            }
-	    ++pixel_idx
+        *png_row_ptr |= (oldbit << (7 - (pixel_idx % 8)));
+
+        if ((pixel_idx + 1) % 8 == 0)
+        {
+            png_row_ptr++;
+            *png_row_ptr = 0;
         }
-
-        png_write_row(png_ptr, png_row);
+        ++pixel_idx;
     }
 
-    png_write_row(png_ptr, png_row); // Write the last row
+    if ((fb_chunk + 1) % 50 == 0)
+    {
+        png_write_row(png_ptr, png_row);
+        memset(png_row, 0, (vinfo.xres / 8) + 1);
+        png_row_ptr = png_row;
+        pixel_idx = 0;
+    }
+}
+
+// Write the remaining row if any pixels are left
+if (pixel_idx > 0 && pixel_idx % 8 != 0)
+{
+    png_write_row(png_ptr, png_row);
+}
 
     //--------------------------------------------------------------------
 
