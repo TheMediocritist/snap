@@ -64,8 +64,14 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    if (vinfo.bits_per_pixel != 8)
+    {
+        fprintf(stderr, "%s: only 8 bits per pixel supported\n", program);
+        exit(EXIT_FAILURE);
+    }
+
     size_t framebuffer_size = vinfo.xres * vinfo.yres;
-    uint8_t *fbp = (uint8_t *)malloc(framebuffer_size);
+    uint8_t *fbp = (uint8_t *)malloc(framebuffer_size / 8);
 
     if (fbp == NULL)
     {
@@ -73,10 +79,10 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    ssize_t bytes_read = read(fbfd, fbp, framebuffer_size);
+    ssize_t bytes_read = read(fbfd, fbp, framebuffer_size / 8);
     close(fbfd);
 
-    if (bytes_read != framebuffer_size)
+    if (bytes_read != framebuffer_size / 8)
     {
         fprintf(stderr,
                 "%s: failed to read framebuffer - %s",
@@ -110,14 +116,15 @@ int main(int argc, char *argv[])
                 "%s: could not allocate PNG info struct\n",
                 program);
         free(fbp);
+        png_destroy_write_struct(&png_ptr, NULL);
         exit(EXIT_FAILURE);
     }
 
     if (setjmp(png_jmpbuf(png_ptr)))
     {
-        png_destroy_write_struct(&png_ptr, &info_ptr);
         fprintf(stderr, "%s: error creating PNG\n", program);
         free(fbp);
+        png_destroy_write_struct(&png_ptr, &info_ptr);
         exit(EXIT_FAILURE);
     }
 
@@ -127,6 +134,7 @@ int main(int argc, char *argv[])
     {
         fprintf(stderr, "%s: Unable to create %s\n", program, pngname);
         free(fbp);
+        png_destroy_write_struct(&png_ptr, &info_ptr);
         exit(EXIT_FAILURE);
     }
 
@@ -137,20 +145,21 @@ int main(int argc, char *argv[])
         info_ptr,
         vinfo.xres,
         vinfo.yres,
-        1,  // Bit depth of 1
-        PNG_COLOR_TYPE_GRAY,
+        1,                      // Bit depth of 1
+        PNG_COLOR_TYPE_GRAY,    // Grayscale image
         PNG_INTERLACE_NONE,
         PNG_COMPRESSION_TYPE_BASE,
         PNG_FILTER_TYPE_BASE);
 
     png_write_info(png_ptr, info_ptr);
 
-    png_bytep png_buffer = (png_bytep)malloc((vinfo.xres + 7) / 8 * vinfo.yres);
+    png_bytep png_row = (png_bytep)malloc((vinfo.xres + 7) / 8); // Buffer for a single row of the PNG image
 
-    if (png_buffer == NULL)
+    if (png_row == NULL)
     {
         fprintf(stderr, "%s: Unable to allocate buffer\n", program);
         free(fbp);
+        png_destroy_write_struct(&png_ptr, &info_ptr);
         fclose(pngfp);
         exit(EXIT_FAILURE);
     }
@@ -161,18 +170,31 @@ int main(int argc, char *argv[])
 
     for (size_t y = 0; y < vinfo.yres; y++)
     {
-        size_t x;
+        memset(png_row, 0, (vinfo.xres + 7) / 8); // Clear the row buffer
 
-        for (x = 0; x < vinfo.xres; x++)
+        for (size_t x = 0; x < vinfo.xres; x++)
         {
             size_t fb_offset = x + y * vinfo.xres;
             uint8_t pixel = (fbp[fb_offset / 8] >> (7 - (fb_offset % 8))) & 0x01;
-            png_buffer[png_buffer_index / 8] |= (pixel << (7 - (png_buffer_index % 8)));
-            png_buffer_index++;
+            png_row[x / 8] |= (pixel << (7 - (x % 8)));
         }
+
+        png_write_row(png_ptr, png_row);
     }
 
     //--------------------------------------------------------------------
+
+    free(fbp);
+    free(png_row);
+    png_write_end(png_ptr, NULL);
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+    fclose(pngfp);
+
+    //--------------------------------------------------------------------
+
+    return 0;
+}
+
 
     free(fbp);
     png_write_image(png_ptr, &png_buffer);
