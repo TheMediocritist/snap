@@ -169,7 +169,7 @@ int main(int argc, char *argv[])
     char buffer_chunk[8];
     uint16_t fb_chunk; 			// chunk counter (8 bits of fb1 per chunk)
     uint8_t fb_chunk_bit;		// bit counter 
-    uint32_t pixel = 0;
+    uint32_t pixel_idx = 0;
     
     // loop through pixels
 	for (fb_chunk = 0; fb_chunk < 12000; fb_chunk++)
@@ -186,14 +186,14 @@ int main(int argc, char *argv[])
 	{
             uint8_t oldbit = buffer_chunk[fb_chunk_bit];
 
-            *png_row_ptr |= (oldbit << (7 - (pixel % 8)));
+            *png_row_ptr |= (oldbit << (7 - (pixel_idx % 8)));
 
             if ((fb_chunk + 1) % 50 == 0)
             {
                 png_row_ptr++;
                 *png_row_ptr = 0;
             }
-	    ++pixel
+	    ++pixel_idx
         }
 
         png_write_row(png_ptr, png_row);
