@@ -1,7 +1,7 @@
 CFLAGS = -g -O2 -Wall  $(shell libpng-config --cflags)
 LDLIBS = $(shell libpng-config --ldflags)
 
-PROGRAMS = fb2png
+PROGRAMS = snap
 
 all: $(PROGRAMS)
 
