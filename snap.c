@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
 
     if (setjmp(png_jmpbuf(png_ptr)))
     {
-        fprintf(stderr, "%s: error creating PNG\n", program);
+        fprintf(stderr, "%s: error during PNG creation\n", program);
         free(fbp);
         png_destroy_write_struct(&png_ptr, &info_ptr);
         exit(EXIT_FAILURE);
@@ -166,8 +166,6 @@ int main(int argc, char *argv[])
 
     //--------------------------------------------------------------------
 
-    size_t png_buffer_index = 0;
-
     for (size_t y = 0; y < vinfo.yres; y++)
     {
         memset(png_row, 0, (vinfo.xres + 7) / 8); // Clear the row buffer
@@ -186,19 +184,6 @@ int main(int argc, char *argv[])
 
     free(fbp);
     free(png_row);
-    png_write_end(png_ptr, NULL);
-    png_destroy_write_struct(&png_ptr, &info_ptr);
-    fclose(pngfp);
-
-    //--------------------------------------------------------------------
-
-    return 0;
-}
-
-
-    free(fbp);
-    png_write_image(png_ptr, &png_buffer);
-    free(png_buffer);
     png_write_end(png_ptr, NULL);
     png_destroy_write_struct(&png_ptr, &info_ptr);
     fclose(pngfp);
