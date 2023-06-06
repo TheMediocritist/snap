@@ -166,24 +166,30 @@ int main(int argc, char *argv[])
 
     //--------------------------------------------------------------------
     
-    uint8_t source_pixel = 0;
+    char buffer_chunk[8];
+    
+    // loop through pixels
+	for (fb_chunk = 0; fb_chunk < 12000; fb_chunk++)
+    {
+        // copy data chunk _from_ framebuffer 
+		memcpy(buffer_chunk, fbp + (fb_chunk * 8), 8);
+    }
     
     for (size_t y = 0; y < 240; y++)
     {
         png_bytep png_row_ptr = png_row;
+        
+        for (fb_chunk_bit = 0; fb_chunk_bit < 8; fb_chunk_bit++)
+		{
+            uint8_t oldbit = buffer_chunk[fb_chunk_bit];
 
-        for (size_t x = 0; x < 400; x++)
-        {
-            size_t fb_offset = x + y * 400;
-            uint8_t pixel = (fbp[source_pixel])// >> (7 - (fb_offset % 8))) & 0x01;
-            *png_row_ptr |= (pixel << (7 - (x % 8)));
+            *png_row_ptr |= (oldbit << (7 - (x % 8)));
 
-            if ((x + 1) % 8 == 0)
+            if ((fb_chunk + 1) % 50 == 0)
             {
                 png_row_ptr++;
                 *png_row_ptr = 0;
             }
-            ++source_pixel;
         }
 
         png_write_row(png_ptr, png_row);
