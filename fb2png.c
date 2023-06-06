@@ -64,12 +64,6 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    if (vinfo.bits_per_pixel != 8)
-    {
-        fprintf(stderr, "%s: only 8 bits per pixel supported\n", program);
-        exit(EXIT_FAILURE);
-    }
-
     size_t framebuffer_size = vinfo.xres * vinfo.yres;
     uint8_t *fbp = (uint8_t *)malloc(framebuffer_size);
 
