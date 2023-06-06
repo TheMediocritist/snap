@@ -167,6 +167,8 @@ int main(int argc, char *argv[])
     //--------------------------------------------------------------------
     
     char buffer_chunk[8];
+    uint16_t fb_chunk; 			// chunk counter (8 bits of fb1 per chunk)
+    uint8_t fb_chunk_bit;		// bit counter 
     
     // loop through pixels
 	for (fb_chunk = 0; fb_chunk < 12000; fb_chunk++)
