@@ -177,7 +177,10 @@ int main(int argc, char *argv[])
             *png_row_ptr |= (pixel << (7 - (x % 8)));
 
             if ((x + 1) % 8 == 0)
+            {
                 png_row_ptr++;
+                *png_row_ptr = 0;
+            }
         }
 
         png_write_row(png_ptr, png_row);
