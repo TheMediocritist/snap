@@ -165,15 +165,17 @@ int main(int argc, char *argv[])
     }
 
     //--------------------------------------------------------------------
-
-    for (size_t y = 0; y < vinfo.yres; y++)
+    
+    uint8_t source_pixel = 0;
+    
+    for (size_t y = 0; y < 240; y++)
     {
         png_bytep png_row_ptr = png_row;
 
-        for (size_t x = 0; x < vinfo.xres; x++)
+        for (size_t x = 0; x < 400; x++)
         {
-            size_t fb_offset = x + y * vinfo.xres;
-            uint8_t pixel = (fbp[fb_offset / 8] >> (7 - (fb_offset % 8))) & 0x01;
+            size_t fb_offset = x + y * 400;
+            uint8_t pixel = (fbp[source_pixel] >> (7 - (fb_offset % 8))) & 0x01;
             *png_row_ptr |= (pixel << (7 - (x % 8)));
 
             if ((x + 1) % 8 == 0)
@@ -181,6 +183,7 @@ int main(int argc, char *argv[])
                 png_row_ptr++;
                 *png_row_ptr = 0;
             }
+            ++source_pixel;
         }
 
         png_write_row(png_ptr, png_row);
