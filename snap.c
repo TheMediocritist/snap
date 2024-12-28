@@ -64,14 +64,15 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    if (vinfo.bits_per_pixel != 8)
+    // Ensure the framebuffer is 32 bpp
+    if (vinfo.bits_per_pixel != 32)
     {
-        fprintf(stderr, "%s: only 8 bits per pixel supported\n", program);
+        fprintf(stderr, "%s: only 32 bits per pixel supported\n", program);
         exit(EXIT_FAILURE);
     }
 
-    size_t framebuffer_size = vinfo.xres * vinfo.yres;
-    uint8_t *fbp = (uint8_t *)malloc(framebuffer_size / 8);
+    size_t framebuffer_size = vinfo.xres * vinfo.yres * 4;  // 4 bytes per pixel (32 bpp)
+    uint8_t *fbp = (uint8_t *)malloc(framebuffer_size);
 
     if (fbp == NULL)
     {
@@ -79,10 +80,10 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    ssize_t bytes_read = read(fbfd, fbp, framebuffer_size / 8);
+    ssize_t bytes_read = read(fbfd, fbp, framebuffer_size);
     close(fbfd);
 
-    if (bytes_read != framebuffer_size / 8)
+    if (bytes_read != framebuffer_size)
     {
         fprintf(stderr,
                 "%s: failed to read framebuffer - %s",
@@ -145,7 +146,7 @@ int main(int argc, char *argv[])
         info_ptr,
         vinfo.xres,
         vinfo.yres,
-        1,                      // Bit depth of 1
+        8,                      // Bit depth of 8 for grayscale
         PNG_COLOR_TYPE_GRAY,    // Grayscale image
         PNG_INTERLACE_NONE,
         PNG_COMPRESSION_TYPE_BASE,
@@ -153,7 +154,7 @@ int main(int argc, char *argv[])
 
     png_write_info(png_ptr, info_ptr);
 
-    png_bytep png_row = (png_bytep)malloc((vinfo.xres / 8) + 1); // Buffer for a single row of the PNG image
+    png_bytep png_row = (png_bytep)malloc(vinfo.xres); // Buffer for a single row of the PNG image
 
     if (png_row == NULL)
     {
@@ -165,47 +166,31 @@ int main(int argc, char *argv[])
     }
 
     //--------------------------------------------------------------------
-    
-    char buffer_chunk[8];
-    uint16_t fb_chunk; 			// chunk counter (8 bits of fb1 per chunk)
-    uint8_t fb_chunk_bit;		// bit counter 
+
     uint32_t pixel_idx = 0;
-    
-// Loop through chunks of framebuffer data
-for (fb_chunk = 0; fb_chunk < 12000; fb_chunk++)
-{
-    // Copy data chunk _from_ framebuffer
-    memcpy(buffer_chunk, fbp + (fb_chunk * 8), 8);
 
-    // Loop through pixels in the chunk
-    for (fb_chunk_bit = 0; fb_chunk_bit < 8; fb_chunk_bit++)
+    // Loop through framebuffer data and create PNG row by row
+    for (uint32_t y = 0; y < vinfo.yres; ++y)
     {
-        uint8_t oldbit = (buffer_chunk[fb_chunk_bit] == '1') ? 1 : 0;
+        // Copy a row of framebuffer data
+        uint32_t *row_data = (uint32_t *)(fbp + y * vinfo.xres * 4);  // 4 bytes per pixel for 32 bpp
+        memset(png_row, 0, vinfo.xres);
 
-        *png_row_ptr |= (oldbit << (7 - (pixel_idx % 8)));
-
-        if ((pixel_idx + 1) % 8 == 0)
+        for (uint32_t x = 0; x < vinfo.xres; ++x)
         {
-            png_row_ptr++;
-            *png_row_ptr = 0;
+            uint32_t pixel = row_data[x];
+            uint8_t red = (pixel >> 24) & 0xFF;
+            uint8_t green = (pixel >> 16) & 0xFF;
+            uint8_t blue = (pixel >> 8) & 0xFF;
+
+            // Convert to grayscale
+            uint8_t gray = (red + green + blue) / 3;
+
+            png_row[x] = gray;  // Set pixel value in grayscale
         }
-        ++pixel_idx;
-    }
 
-    if ((fb_chunk + 1) % 50 == 0)
-    {
-        png_write_row(png_ptr, png_row);
-        memset(png_row, 0, (vinfo.xres / 8) + 1);
-        png_row_ptr = png_row;
-        pixel_idx = 0;
+        png_write_row(png_ptr, png_row);  // Write the row to the PNG
     }
-}
-
-// Write the remaining row if any pixels are left
-if (pixel_idx > 0 && pixel_idx % 8 != 0)
-{
-    png_write_row(png_ptr, png_row);
-}
 
     //--------------------------------------------------------------------
 
